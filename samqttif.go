@@ -3,14 +3,13 @@ package samqttif
 import (
 	"encoding/json"
 	"fmt"
-	"log"
+	llog "log"
 	"os"
 	"sort"
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/google/uuid"
-	flogolog "github.com/project-flogo/core/support/log"
 )
 
 var espSupported bool
@@ -44,6 +43,16 @@ func NewSensorValueMessage(entity string, datetime string) *SensorValueMessage {
 	svm.Payload["values"] = make([]MSI, 0, 10)
 	//svm["values"] = append(svm["values"], 5)
 	return svm
+}
+
+func (svm *SensorValueMessage) AnyValues() bool {
+	rc := true
+	values := svm.Payload["values"].([]MSI)
+
+	if len(values) == 0 {
+		rc = false
+	}
+	return rc
 }
 
 func (svm *SensorValueMessage) AddValue(field string, amount float64) {
@@ -99,7 +108,6 @@ type SAMqttClient struct {
 	port               string
 	clientID           string
 	client             mqtt.Client
-	logger             flogolog.Logger
 	report             []string
 	connectedOnce      bool // Default false
 	connectCallback    MqttCallback
@@ -131,21 +139,29 @@ func (c *SAMqttClient) Initialize() {
 
 	// onConnect defines the on connect handler which resets backoff variables.
 	var onConnect mqtt.OnConnectHandler = func(client mqtt.Client) {
-		fmt.Println("Client connected.")
+		fmt.Println("Info: client connected.")
 		c.connectedOnce = true
+		if c.connectCallback == nil {
+			fmt.Println("Warning: no connect callback registered.")
+			return
+		}
 		c.connectCallback()
 	}
 
 	// onDisconnect defines the connection lost handler for the mqtt client.
 	var onDisconnect mqtt.ConnectionLostHandler = func(client mqtt.Client, err error) {
-		fmt.Println("Client disconnected. Error: ", err.Error())
+		fmt.Println("Info: client disconnected. Cause: ", err.Error())
 		c.connectedOnce = false
+		if c.disconnectCallback == nil {
+			fmt.Println("Warning: no diconnect callback registered.")
+			return
+		}
 		c.disconnectCallback()
 	}
 
 	if c.debug {
-		mqtt.DEBUG = log.New(os.Stdout, "", 0)
-		mqtt.ERROR = log.New(os.Stdout, "", 0)
+		mqtt.DEBUG = llog.New(os.Stdout, "", 0)
+		mqtt.ERROR = llog.New(os.Stdout, "", 0)
 	}
 
 	opts := mqtt.NewClientOptions()
