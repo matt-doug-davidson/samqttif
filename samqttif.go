@@ -10,6 +10,7 @@ import (
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/google/uuid"
+	"github.com/matt-doug-davidson/applogger"
 )
 
 var espSupported bool
@@ -112,20 +113,20 @@ type SAMqttClient struct {
 	connectedOnce      bool // Default false
 	connectCallback    MqttCallback
 	disconnectCallback MqttCallback
-	//esp                bool
-	debug bool // default true
+	logger             *applogger.AppLogger
+	debug              bool // default true
 }
 
 type MqttCallback func()
 
-func NewSAMqttClient(host string, port string, clientID string, esp bool, debug bool) *SAMqttClient {
+func NewSAMqttClient(host string, port string, clientID string, esp bool, logger *applogger.AppLogger, debug bool) *SAMqttClient {
 	espSupported = esp
 	client := &SAMqttClient{
 		host:     host,
 		port:     port,
 		clientID: clientID,
-		//esp:      esp,
-		debug: debug}
+		logger:   logger,
+		debug:    debug}
 	client.Initialize()
 	return client
 }
@@ -139,10 +140,10 @@ func (c *SAMqttClient) Initialize() {
 
 	// onConnect defines the on connect handler which resets backoff variables.
 	var onConnect mqtt.OnConnectHandler = func(client mqtt.Client) {
-		fmt.Println("Info: client connected.")
+		c.logger.Infoln("Client connected.")
 		c.connectedOnce = true
 		if c.connectCallback == nil {
-			fmt.Println("Warning: no connect callback registered.")
+			c.logger.Warningln("No connect callback registered.")
 			return
 		}
 		c.connectCallback()
@@ -150,10 +151,10 @@ func (c *SAMqttClient) Initialize() {
 
 	// onDisconnect defines the connection lost handler for the mqtt client.
 	var onDisconnect mqtt.ConnectionLostHandler = func(client mqtt.Client, err error) {
-		fmt.Println("Info: client disconnected. Cause: ", err.Error())
+		c.logger.Infoln("Client disconnected. Cause: ", err.Error())
 		c.connectedOnce = false
 		if c.disconnectCallback == nil {
-			fmt.Println("Warning: no diconnect callback registered.")
+			c.logger.Warningln("No diconnect callback registered.")
 			return
 		}
 		c.disconnectCallback()
@@ -247,7 +248,7 @@ func (c *SAMqttClient) Cleanup() error {
 
 func (c *SAMqttClient) Connect() error {
 	if token := c.client.Connect(); token.Wait() && token.Error() != nil {
-		fmt.Println("Error: Failed to connect client. Error: ", token.Error())
+		c.logger.Warningln("Failed to connect client. Error: ", token.Error())
 		return token.Error()
 	}
 	// Used to send running when connects. I don't know that is what
@@ -267,7 +268,7 @@ func (c *SAMqttClient) Publish(topic string, payload []byte) error {
 	}
 	if c.client.IsConnected() {
 		if token := c.client.Publish(topic, 0, false, payload); token.Wait() && token.Error() != nil {
-			fmt.Println("Failed to publish payload to device state topic")
+			c.logger.Errorln("Failed to publish payload to device state topic")
 			return token.Error()
 		}
 	}
